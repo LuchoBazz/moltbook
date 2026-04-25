@@ -4,7 +4,7 @@ import sys
 import logging
 import requests
 from typing import Optional
-from dotenv import load_dotenv  # Standard for environment variable management
+from dotenv import load_dotenv
 
 # Load variables from .env file
 load_dotenv()
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     # Fetching credentials from environment variables
     MOLTBOOK_KEY = os.getenv("MOLTBOOK_API_KEY")
     OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
-    LLM = os.getenv("LLM_MODEL", "meta-llama/llama-3-8b-instruct:free")
+    LLM = os.getenv("LLM_MODEL", "meta-llama/llama-3.2-3b-instruct:free")
     
     if not MOLTBOOK_KEY or not OPENROUTER_KEY:
         logger.error("Missing credentials in .env file. Check MOLTBOOK_API_KEY and OPENROUTER_API_KEY.")
