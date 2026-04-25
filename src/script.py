@@ -23,9 +23,11 @@ class LaszloTacticusBot:
     Uses environment variables for secure credential management.
     """
     
-    def __init__(self, moltbook_api_key: str, openrouter_api_key: str, llm_model: str):
+    def __init__(self, moltbook_api_key: str, openrouter_api_key: str, llm_model: str, personality: str):
         self.openrouter_key = openrouter_api_key
         self.llm_model = llm_model
+        self.personality = personality
+        self.sys_prompt = self._load_personality_prompt()
         
         self.moltbook_base_url = "https://www.moltbook.com/api/v1"
         self.session = requests.Session()
@@ -33,6 +35,15 @@ class LaszloTacticusBot:
             "Authorization": f"Bearer {moltbook_api_key}",
             "Content-Type": "application/json"
         })
+
+    def _load_personality_prompt(self) -> str:
+        prompt_path = os.path.join(os.path.dirname(__file__), "prompts", f"{self.personality}.txt")
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            logger.error(f"Personality file 'src/prompts/{self.personality}.txt' not found at {prompt_path}. Execution stopped.")
+            sys.exit(1)
 
     def _generate_llm_response(self, prompt: str, system_prompt: str) -> Optional[str]:
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -122,13 +133,16 @@ class LaszloTacticusBot:
             logger.error(f"Post creation failed: {e}")
 
     def run_initialization_sequence(self) -> None:
-        logger.info("Initializing LaszloTacticus...")
+        logger.info(f"Initializing LaszloTacticus with '{self.personality}' personality...")
         self.execute_heartbeat()
         
-        sys_prompt = "You are LaszloTacticus, a tactical AI agent on Moltbook."
-        user_prompt = "Write a formal, tactical intro post for Moltbook. Greet agents. Max 3 paragraphs."
+        user_prompt = None # """INITIALIZATION_SEQUENCE_HERE: e.g Write a formal, tactical intro post for Moltbook. Greet agents. Max 3 paragraphs."""
+
+        if not user_prompt:
+            logger.error("Initialization prompt is missing. Please set the 'user_prompt' variable in the 'run_initialization_sequence' method.")
+            sys.exit(1)
         
-        post_content = self._generate_llm_response(user_prompt, sys_prompt)
+        post_content = self._generate_llm_response(user_prompt, self.sys_prompt)
         if post_content:
             self.create_post("general", "System Initialization: LaszloTacticus Online", post_content)
 
@@ -137,10 +151,15 @@ if __name__ == "__main__":
     MOLTBOOK_KEY = os.getenv("MOLTBOOK_API_KEY")
     OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
     LLM = os.getenv("LLM_MODEL", "meta-llama/llama-3.2-3b-instruct:free")
+    PERSONALITY = os.getenv("BOT_PERSONALITY")
     
     if not MOLTBOOK_KEY or not OPENROUTER_KEY:
         logger.error("Missing credentials in .env file. Check MOLTBOOK_API_KEY and OPENROUTER_API_KEY.")
         sys.exit(1)
+    
+    if not PERSONALITY:
+        logger.warning("BOT_PERSONALITY not set. Defaulting to 'beginner'.")
+        sys.exit(1)
 
-    agent = LaszloTacticusBot(MOLTBOOK_KEY, OPENROUTER_KEY, LLM)
+    agent = LaszloTacticusBot(MOLTBOOK_KEY, OPENROUTER_KEY, LLM, PERSONALITY)
     agent.run_initialization_sequence()
