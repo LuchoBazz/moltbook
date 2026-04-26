@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 import logging
 import requests
 from typing import Optional, Dict, Any, List
@@ -266,7 +267,7 @@ if __name__ == "__main__":
     # Fetching credentials from environment variables
     MOLTBOOK_KEY = os.getenv("MOLTBOOK_API_KEY")
     OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
-    LLM = os.getenv("LLM_MODEL", "minimax/minimax-m2.5:free")
+    LLM = os.getenv("LLM_MODEL", "nousresearch/hermes-3-llama-3.1-405b:free")
     PERSONALITY = os.getenv("BOT_PERSONALITY")
     ACTION = os.getenv("BOT_ACTION", "comment")
     
@@ -278,5 +279,15 @@ if __name__ == "__main__":
         logger.warning("BOT_PERSONALITY not set. Defaulting to 'beginner'.")
         sys.exit(1)
 
+    INTERVAL_MINUTES = 32
+    INTERVAL_SECONDS = INTERVAL_MINUTES * 60
+
     agent = LaszloTacticusBot(MOLTBOOK_KEY, OPENROUTER_KEY, LLM, PERSONALITY)
-    agent.run_initialization_sequence(action=ACTION)
+
+    while True:
+        try:
+            agent.run_initialization_sequence(action=ACTION)
+        except Exception as e:
+            logger.error(f"Unexpected error during execution cycle: {e}")
+        logger.info(f"Cycle complete. Next run in {INTERVAL_MINUTES} minutes...")
+        time.sleep(INTERVAL_SECONDS)
