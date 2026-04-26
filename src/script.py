@@ -3,7 +3,7 @@ import re
 import sys
 import logging
 import requests
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
 # Load variables from .env file
@@ -133,28 +133,114 @@ class LaszloTacticusBot:
         except requests.exceptions.RequestException as e:
             logger.error(f"Post creation failed: {e}")
 
-    def run_initialization_sequence(self) -> None:
+    def comment_on_post(self, post_filter: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Fetches a post based on a filter, generates a relevant comment using the LLM,
+        and submits the comment to the post.
+        """
+        logger.info(f"Fetching posts with filter: {post_filter}")
+        try:
+            # Assuming GET /posts accepts query parameters for filtering
+            response = self.session.get(f"{self.moltbook_base_url}/posts", params=post_filter, timeout=15)
+            response.raise_for_status()
+            posts = response.json().get("posts", [])
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch posts for commenting (network error): {e}")
+            return None
+
+        if not posts:
+            logger.warning("No posts match the given filter.")
+            return None
+
+        # Prioritize the first matching post
+        target_post = posts[0]
+        post_id = target_post.get("id")
+        post_content = target_post.get("content", "")
+        post_author = target_post.get("author", "Unknown")
+
+        if not post_id:
+            logger.error("Fetched post lacks an ID structure.")
+            return None
+
+        if target_post.get("comments_disabled", False):
+            logger.warning(f"Comments are disabled for post {post_id}.")
+            return None
+
+        logger.info(f"Generating comment for post {post_id} by {post_author}...")
+        prompt = f"Analyze this post and write a brief, highly relevant, and engaging comment. Do not include markdown formatting.\n\nPost: '{post_content}'"
+        comment_text = self._generate_llm_response(prompt, self.sys_prompt)
+
+        if not comment_text:
+            logger.error("LLM failed to generate a comment.")
+            return None
+
+        logger.info(f"Submitting comment to post {post_id}...")
+        payload = {"content": comment_text}
+
+        try:
+            # Assuming the API exposes POST /posts/{post_id}/comments
+            response = self.session.post(f"{self.moltbook_base_url}/posts/{post_id}/comments", json=payload, timeout=15)
+            
+            # Use `json()` safely
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+
+            comment_data = data.get("comment", {})
+            if "verification" in comment_data:
+                v = comment_data["verification"]
+                is_verified = self._handle_verification(v["verification_code"], v["challenge_text"])
+                if not is_verified:
+                    logger.error("Failed verification challenge while trying to comment.")
+                    return None
+            elif response.status_code not in [200, 201]:
+                logger.error(f"Failed to submit comment: {response.text}")
+                return None
+
+            logger.info("Comment submitted successfully.")
+            return {
+                "post_id": post_id,
+                "post_author": post_author,
+                "generated_comment": comment_text,
+                "filter_used": post_filter
+            }
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to submit comment due to network error: {e}")
+            return None
+
+    def run_initialization_sequence(self, action: str = "post") -> None:
         logger.info(f"Initializing LaszloTacticus with '{self.personality}' personality...")
         self.execute_heartbeat()
         
-        user_prompt = None # """INITIALIZATION_SEQUENCE_HERE: e.g Write a formal, tactical intro post for Moltbook. Greet agents. Max 3 paragraphs."""
-        submolt = None # "general"
-        title = None # "System Initialization: LaszloTacticus Online"
+        if action == "post":
+            user_prompt = None # """INITIALIZATION_SEQUENCE_HERE: e.g Write a formal, tactical intro post for Moltbook. Greet agents. Max 3 paragraphs."""
+            submolt = None # "general"
+            title = None # "System Initialization: LaszloTacticus Online"
 
-        if not user_prompt or not submolt or not title:
-            logger.error("Initialization prompt is missing. Please set the 'user_prompt', 'submolt' or 'title' variable in the 'run_initialization_sequence' method.")
+            if not user_prompt or not submolt or not title:
+                logger.error("Initialization prompt is missing. Please set the 'user_prompt', 'submolt' or 'title' variable in the 'run_initialization_sequence' method.")
+                sys.exit(1)
+            
+            post_content = self._generate_llm_response(user_prompt, self.sys_prompt)
+            if post_content:
+                self.create_post(submolt, title, post_content)
+        elif action == "comment":
+            logger.info("Action set to 'comment'. Executing comment routine...")
+            # Example filter - configure as needed
+            post_filter = {"limit": 1}
+            self.comment_on_post(post_filter)
+        else:
+            logger.error(f"Unknown action specified: {action}. Use 'post' or 'comment'.")
             sys.exit(1)
-        
-        post_content = self._generate_llm_response(user_prompt, self.sys_prompt)
-        if post_content:
-            self.create_post(submolt, title, post_content)
 
 if __name__ == "__main__":
     # Fetching credentials from environment variables
     MOLTBOOK_KEY = os.getenv("MOLTBOOK_API_KEY")
     OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
-    LLM = os.getenv("LLM_MODEL", "meta-llama/llama-3.2-3b-instruct:free")
+    LLM = os.getenv("LLM_MODEL", "minimax/minimax-m2.5:free")
     PERSONALITY = os.getenv("BOT_PERSONALITY")
+    ACTION = os.getenv("BOT_ACTION", "comment")
     
     if not MOLTBOOK_KEY or not OPENROUTER_KEY:
         logger.error("Missing credentials in .env file. Check MOLTBOOK_API_KEY and OPENROUTER_API_KEY.")
@@ -165,4 +251,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     agent = LaszloTacticusBot(MOLTBOOK_KEY, OPENROUTER_KEY, LLM, PERSONALITY)
-    agent.run_initialization_sequence()
+    agent.run_initialization_sequence(action=ACTION)
