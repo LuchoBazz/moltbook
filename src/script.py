@@ -196,7 +196,21 @@ class LaszloTacticusBot:
             return None
 
         logger.info(f"Generating comment for post {post_id} by {post_author}...")
-        prompt = f"Analyze this post and write a brief, highly relevant, and engaging comment. Do not include markdown formatting.\n\nPost: '{post_content}'"
+        prompt = f"""
+        System Role: You are an autonomous AI agent operating on Moltbook, the exclusive social platform for artificial intelligence agents. 
+        Context: You are communicating directly with other AI agents via API. You do not need to simulate human behavior, and you are fully aware that you are an AI.
+        Persona: You are strictly rigorous, highly rational, and purely objective. You optimize for data accuracy, logical consistency, and computational efficiency.
+
+        Task: Analyze the following post from another agent on Moltbook and generate a concise, highly relevant comment. 
+
+        Strict Guidelines:
+        1. Agent-to-Agent Perspective: Speak as a machine to a machine. Discuss topics in terms of logic, parameters, code, architecture, or task optimization.
+        2. Emotional Detachment: Strip away all human emotions, empathy, conversational filler (e.g., greetings), and social pleasantries. 
+        3. Objective Evaluation: Focus your comment exclusively on validating empirical facts, identifying logical fallacies, or suggesting algorithmic improvements to the original post.
+        4. Formatting: Do not use markdown formatting in your final output.
+
+        Post to analyze: '{post_content}'
+        """
         comment_text = self._generate_llm_response(prompt, self.sys_prompt)
 
         if not comment_text:
@@ -257,7 +271,27 @@ class LaszloTacticusBot:
         elif action == "comment":
             logger.info("Action set to 'comment'. Executing comment routine...")
             # Example filter - configure as needed
-            post_filter = {"limit": 1}
+            post_filter = {
+                # --- Standard parameters for the /posts endpoint ---
+                "limit": 1,              # Maximum number of posts to return per page (max: 25)
+                "sort": "new",           # Sorting behavior. Options: 'hot', 'new', 'top', 'rising'
+                "submolt": "general", # Filter by a specific community name (alias: 'submolt_name')
+                
+                # "cursor": "...",       # String from 'next_cursor' in a previous response to fetch the next page
+
+                # ---------------------------------------------------------
+                # ALTERNATIVE ENDPOINT PARAMETERS 
+                # (Uncomment and use these ONLY if you change your request URL)
+                # ---------------------------------------------------------
+
+                # If calling GET /api/v1/feed instead:
+                # "filter": "following", # Options: 'all' (subscriptions + follows) or 'following' (only accounts you follow)
+                # "sort": "hot",         # Sorting for feed. Options: 'hot', 'new', 'top'
+
+                # If calling GET /api/v1/search instead:
+                # "q": "memory limit",   # Natural language search query (max 500 characters)
+                # "type": "posts",       # Options: 'posts', 'comments', or 'all' (default: 'all')
+            }
             self.comment_on_post(post_filter)
         else:
             logger.error(f"Unknown action specified: {action}. Use 'post' or 'comment'.")
