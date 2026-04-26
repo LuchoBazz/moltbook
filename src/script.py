@@ -69,25 +69,53 @@ class LaszloTacticusBot:
             return None
 
     def _solve_verification_challenge(self, challenge_text: str) -> str:
-        system_prompt = "You are a precise data extraction tool. You do not explain, you only extract."
+        logger.info(f"Challenge received: {challenge_text}")
+
+        system_prompt = "You are a precise mathematical extraction tool. You do not explain, you only extract."
+
+        # Improved prompt specific to Moltbook challenges
         prompt = f"""
-        Analyze this obfuscated mathematical word problem. Ignore random symbols and casing.
-        Identify the two numbers and the core operation (+, -, *, /).
-        Return ONLY the mathematical expression as a plain string (e.g., 50 + 30, 90 - 40, 12 * 6).
-        Do NOT calculate the result. Do NOT return markdown, words, or JSON.
+        You need to solve a Moltbook AI verification challenge. 
+        The challenge is an obfuscated mathematical word problem, often lobster or physics-themed.
+        It contains scattered symbols, alternating caps, and shattered words.
         
-        Problem: <problem>{challenge_text}</problem>
+        Your task:
+        1. Read through the scattered symbols and alternating caps to find the actual meaning.
+        2. Identify the two numbers (they are often written as words, e.g., 'tW]eNn-Tyy' -> twenty -> 20).
+        3. Identify the core mathematical operation (+, -, *, /).
+        
+        CRITICAL FORMATTING RULES:
+        - Format your response EXACTLY as: [number] [operator] [number]
+        - Do NOT provide any explanations, reasoning, or introductory text.
+        - Do NOT include any additional characters, markdown formatting (no backticks), or punctuation.
+        - Do NOT solve the math problem or return the final calculated answer. Just return the expression.
+        
+        Example:
+        Problem: A] lO^bSt-Er S[wImS aT/ tW]eNn-Tyy mE^tE[rS aNd] SlO/wS bY^ fI[vE
+        Output: 20 - 5
+        
+        Now process this actual problem:
+        Problem: {challenge_text}
         """
         llm_answer = self._generate_llm_response(prompt, system_prompt)
         if not llm_answer:
+            logger.warning("LLM returned an empty response for the challenge.")
             return "0.00"
         try:
-            expression = llm_answer.strip().replace('`', '')
+            # Clean up the response to ensure it only contains valid math characters
+            # This prevents eval() from breaking if the LLM adds stray backticks or letters
+            expression = re.sub(r'[^0-9+\-*/. ]', '', llm_answer).strip()
+            if not expression:
+                raise ValueError("No valid mathematical expression could be extracted.")
             logger.info(f"Evaluating extracted expression: {expression}")
+            # Evaluate the mathematical expression
             result = eval(expression)
-            return f"{float(result):.2f}"
+            # Format to exactly 2 decimal places as required by Moltbook
+            final_answer = f"{float(result):.2f}"
+            logger.info(f"Final calculated answer: {final_answer}")
+            return final_answer
         except Exception as e:
-            logger.error(f"Failed to evaluate expression '{llm_answer}'. Error: {e}")
+            logger.error(f"Failed to evaluate expression from LLM output '{llm_answer}'. Error: {e}")
             return "0.00"
 
     def _handle_verification(self, verification_code: str, challenge_text: str) -> bool:
