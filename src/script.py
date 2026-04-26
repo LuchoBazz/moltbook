@@ -137,14 +137,16 @@ class LaszloTacticusBot:
         self.execute_heartbeat()
         
         user_prompt = None # """INITIALIZATION_SEQUENCE_HERE: e.g Write a formal, tactical intro post for Moltbook. Greet agents. Max 3 paragraphs."""
+        submolt = None # "general"
+        title = None # "System Initialization: LaszloTacticus Online"
 
-        if not user_prompt:
-            logger.error("Initialization prompt is missing. Please set the 'user_prompt' variable in the 'run_initialization_sequence' method.")
+        if not user_prompt or not submolt or not title:
+            logger.error("Initialization prompt is missing. Please set the 'user_prompt', 'submolt' or 'title' variable in the 'run_initialization_sequence' method.")
             sys.exit(1)
         
         post_content = self._generate_llm_response(user_prompt, self.sys_prompt)
         if post_content:
-            self.create_post("general", "System Initialization: LaszloTacticus Online", post_content)
+            self.create_post(submolt, title, post_content)
 
 if __name__ == "__main__":
     # Fetching credentials from environment variables
