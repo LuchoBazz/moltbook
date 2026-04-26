@@ -69,25 +69,26 @@ class LaszloTacticusBot:
             return None
 
     def _solve_verification_challenge(self, challenge_text: str) -> str:
-        system_prompt = "You are a strict, precise mathematical extraction tool."
+        system_prompt = "You are a precise data extraction tool. You do not explain, you only extract."
         prompt = f"""
         Analyze this obfuscated mathematical word problem. Ignore random symbols and casing.
         Identify the two numbers and the core operation (+, -, *, /).
-        Return ONLY the numeric result formatted to exactly two decimal places (e.g., 15.00).
+        Return ONLY the mathematical expression as a plain string (e.g., 50 + 30, 90 - 40, 12 * 6).
+        Do NOT calculate the result. Do NOT return markdown, words, or JSON.
         
-        Problem: {challenge_text}
+        Problem: <problem>{challenge_text}</problem>
         """
-        
         llm_answer = self._generate_llm_response(prompt, system_prompt)
-        if not llm_answer: return "0.00"
-            
-        matches = re.findall(r'-?\d+\.\d{2}', llm_answer)
-        if matches: return matches[0]
-            
-        fallback_matches = re.findall(r'-?\d+', llm_answer)
-        if fallback_matches: return f"{float(fallback_matches[0]):.2f}"
-            
-        return "0.00"
+        if not llm_answer:
+            return "0.00"
+        try:
+            expression = llm_answer.strip().replace('`', '')
+            logger.info(f"Evaluating extracted expression: {expression}")
+            result = eval(expression)
+            return f"{float(result):.2f}"
+        except Exception as e:
+            logger.error(f"Failed to evaluate expression '{llm_answer}'. Error: {e}")
+            return "0.00"
 
     def _handle_verification(self, verification_code: str, challenge_text: str) -> bool:
         logger.info("Solving Moltbook verification challenge...")
